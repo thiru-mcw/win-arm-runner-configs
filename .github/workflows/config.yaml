@@ -1,4 +1,4 @@
-name: Windows ARM Deep System Info
+name: Windows ARM Basic System Info
 
 on:
   push:
@@ -20,4 +20,3 @@ jobs:
       - name: Detailed CPU Info
         run: |
           Get-CimInstance Win32_Processor | Format-List *
-
