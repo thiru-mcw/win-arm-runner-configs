@@ -1,0 +1,23 @@
+name: Windows ARM Deep System Info
+
+on:
+  push:
+
+jobs:
+  system-info:
+    runs-on: windows-11-arm
+
+    steps:
+      - name: Basic Runner Info
+        run: |
+          echo "Runner: $env:RUNNER_NAME"
+          echo "OS: $env:RUNNER_OS"
+          echo "Arch: $env:RUNNER_ARCH"
+
+      - name: System Info
+        run: systeminfo
+
+      - name: Detailed CPU Info
+        run: |
+          Get-CimInstance Win32_Processor | Format-List *
+
