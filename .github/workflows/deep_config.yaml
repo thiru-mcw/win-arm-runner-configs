@@ -1,0 +1,167 @@
+name: Windows ARM Deep System Info
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  system-info:
+    runs-on: windows-11-arm
+
+    steps:
+      - name: Basic Runner Info
+        shell: pwsh
+        run: |
+          echo "Runner: $env:RUNNER_NAME"
+          echo "OS: $env:RUNNER_OS"
+          echo "Arch: $env:RUNNER_ARCH"
+          echo "Processor: $env:PROCESSOR_IDENTIFIER"
+
+      # --------------------------------------------------
+      # 🧠 OS + SYSTEM
+      # --------------------------------------------------
+      - name: System Info
+        run: systeminfo
+
+      - name: Full Computer Info
+        shell: pwsh
+        run: |
+          Get-ComputerInfo
+
+      # --------------------------------------------------
+      # 🧠 CPU (HIGH DETAIL)
+      # --------------------------------------------------
+      - name: CPU Detailed Info
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Processor | Format-List *
+
+      - name: CPU Core / Cache Info
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Processor |
+          Select-Object Name,NumberOfCores,NumberOfLogicalProcessors,L2CacheSize,L3CacheSize
+
+      # --------------------------------------------------
+      # ⚡ ARM INTRINSICS (MOST IMPORTANT)
+      # --------------------------------------------------
+      - name: Detect ARM Intrinsics (.NET)
+        shell: pwsh
+        run: |
+          Write-Host "==== ARM Intrinsics ===="
+
+          try {
+              Add-Type -AssemblyName System.Runtime.Intrinsics
+
+              Write-Host "AdvSimd (NEON): " ([System.Runtime.Intrinsics.Arm.AdvSimd]::IsSupported)
+              Write-Host "AES: " ([System.Runtime.Intrinsics.Arm.Aes]::IsSupported)
+              Write-Host "CRC32: " ([System.Runtime.Intrinsics.Arm.Crc32]::IsSupported)
+              Write-Host "SHA1: " ([System.Runtime.Intrinsics.Arm.Sha1]::IsSupported)
+              Write-Host "SHA256: " ([System.Runtime.Intrinsics.Arm.Sha256]::IsSupported)
+
+              # ARM64 base ISA
+              Write-Host "ArmBase: " ([System.Runtime.Intrinsics.Arm.ArmBase]::IsSupported)
+
+          } catch {
+              Write-Host "Intrinsics not available"
+          }
+
+      # --------------------------------------------------
+      # ⚙️ WINDOWS LOW-LEVEL CPU FLAGS
+      # --------------------------------------------------
+      - name: Windows Processor Feature Flags
+        shell: pwsh
+        run: |
+          $code = @"
+          using System;
+          using System.Runtime.InteropServices;
+
+          public class CPU {
+              [DllImport("kernel32.dll")]
+              public static extern bool IsProcessorFeaturePresent(uint feature);
+          }
+          "@
+          Add-Type -TypeDefinition $code
+
+          $features = @{
+              6  = "PF_ARM_NEON_INSTRUCTIONS_AVAILABLE"
+              18 = "PF_ARM_V8_INSTRUCTIONS_AVAILABLE"
+              19 = "PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE"
+              21 = "PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE"
+          }
+
+          foreach ($f in $features.Keys) {
+              $res = [CPU]::IsProcessorFeaturePresent($f)
+              Write-Host "$($features[$f]) : $res"
+          }
+
+      # --------------------------------------------------
+      # 🧬 ENV + ARCH
+      # --------------------------------------------------
+      - name: Environment Dump
+        shell: pwsh
+        run: |
+          Get-ChildItem Env:
+
+      # --------------------------------------------------
+      # 🧠 MEMORY
+      # --------------------------------------------------
+      - name: Memory Info
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_PhysicalMemory | Format-List *
+          Get-CimInstance Win32_OperatingSystem |
+          Select-Object TotalVisibleMemorySize,FreePhysicalMemory
+
+      # --------------------------------------------------
+      # 💽 STORAGE
+      # --------------------------------------------------
+      - name: Disk Info
+        shell: pwsh
+        run: |
+          Get-PSDrive
+          Get-CimInstance Win32_LogicalDisk | Format-Table *
+
+      # --------------------------------------------------
+      # 🧾 FIRMWARE / BIOS
+      # --------------------------------------------------
+      - name: BIOS / Firmware
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_BIOS | Format-List *
+          Get-CimInstance Win32_BaseBoard | Format-List *
+
+      # --------------------------------------------------
+      # 🌐 NETWORK
+      # --------------------------------------------------
+      - name: Network Info
+        run: ipconfig /all
+
+      - name: Network Adapters
+        shell: pwsh
+        run: |
+          Get-NetAdapter | Format-List *
+
+      # --------------------------------------------------
+      # 🧪 OPTIONAL: .NET + TOOLCHAINS
+      # --------------------------------------------------
+      - name: .NET Info
+        run: dotnet --info
+        continue-on-error: true
+
+      # --------------------------------------------------
+      # 📦 SAVE REPORTS
+      # --------------------------------------------------
+      - name: Save Reports
+        shell: pwsh
+        run: |
+          systeminfo > systeminfo.txt
+          Get-ComputerInfo > computerinfo.txt
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm-system-report
+          path: |
+            systeminfo.txt
+            computerinfo.txt
